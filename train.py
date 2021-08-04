@@ -11,15 +11,15 @@ from trainer import trainer_synapse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/Synapse/train_npz', help='root dir for data')
+                    default='data/Synapse/train_npz', help='root dir for data')
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
 parser.add_argument('--list_dir', type=str,
-                    default='./lists/lists_Synapse', help='list dir')
+                    default='list_dir', help='list dir')
 parser.add_argument('--num_classes', type=int,
-                    default=9, help='output channel of network')
+                    default=3, help='output channel of network')
 parser.add_argument('--max_iterations', type=int,
-                    default=30000, help='maximum epoch number to train')
+                    default=60000, help='maximum epoch number to train')
 parser.add_argument('--max_epochs', type=int,
                     default=150, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
@@ -30,7 +30,7 @@ parser.add_argument('--deterministic', type=int,  default=1,
 parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
 parser.add_argument('--img_size', type=int,
-                    default=224, help='input patch size of network input')
+                    default=256, help='input patch size of network input')
 parser.add_argument('--seed', type=int,
                     default=1234, help='random seed')
 parser.add_argument('--n_skip', type=int,
@@ -57,9 +57,9 @@ if __name__ == "__main__":
     dataset_name = args.dataset
     dataset_config = {
         'Synapse': {
-            'root_path': '../data/Synapse/train_npz',
-            'list_dir': './lists/lists_Synapse',
-            'num_classes': 9,
+            'root_path': 'datasets/data/Synapse/train_npz',
+            'list_dir': 'datasets/data/Synapse',
+            'num_classes': 3,
         },
     }
     args.num_classes = dataset_config[dataset_name]['num_classes']
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     args.list_dir = dataset_config[dataset_name]['list_dir']
     args.is_pretrain = True
     args.exp = 'TU_' + dataset_name + str(args.img_size)
-    snapshot_path = "../model/{}/{}".format(args.exp, 'TU')
+    snapshot_path = "./model/{}/{}".format(args.exp, 'TU')
     snapshot_path = snapshot_path + '_pretrain' if args.is_pretrain else snapshot_path
     snapshot_path += '_' + args.vit_name
     snapshot_path = snapshot_path + '_skip' + str(args.n_skip)
@@ -81,13 +81,19 @@ if __name__ == "__main__":
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    config_vit = CONFIGS_ViT_seg[args.vit_name]
+    config_vit = CONFIGS_ViT_seg[args.vit_name]#R50-ViT-B_16
     config_vit.n_classes = args.num_classes
     config_vit.n_skip = args.n_skip
     if args.vit_name.find('R50') != -1:
-        config_vit.patches.grid = (int(args.img_size / args.vit_patches_size), int(args.img_size / args.vit_patches_size))
+        config_vit.patches.grid = (int(args.img_size / args.vit_patches_size), int(args.img_size / args.vit_patches_size))#（14，14）
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes).cuda()
+    # from Code.utils.utils import CalParams
+    #
+    # x = torch.randn(1, 3, args.img_size,
+    #                 args.img_size).cuda()  # 返回一个张量，包含了从标准正态分布（均值为0，方差为1，即高斯白噪声）中抽取的一组随机数。torch.randn(*sizes, out=None) → Tensor,张量的形状由参数sizes定义。
+    # CalParams(net, x)
     net.load_from(weights=np.load(config_vit.pretrained_path))
+    # net.load_state_dict(torch.load('best_model.pth'))
 
     trainer = {'Synapse': trainer_synapse,}
     trainer[dataset_name](args, net, snapshot_path)

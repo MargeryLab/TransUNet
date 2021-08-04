@@ -52,8 +52,8 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         self.vis = vis
         self.num_attention_heads = config.transformer["num_heads"]
-        self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
+        self.attention_head_size = int(config.hidden_size / self.num_attention_heads)#768/12=64
+        self.all_head_size = self.num_attention_heads * self.attention_head_size#768
 
         self.query = Linear(config.hidden_size, self.all_head_size)
         self.key = Linear(config.hidden_size, self.all_head_size)
@@ -66,20 +66,20 @@ class Attention(nn.Module):
         self.softmax = Softmax(dim=-1)
 
     def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)#（24，256）+（12，64）=([24, 256, 12, 64])
         x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)
+        return x.permute(0, 2, 1, 3)#(24,12,256,64)
 
-    def forward(self, hidden_states):
-        mixed_query_layer = self.query(hidden_states)
+    def forward(self, hidden_states):#（24，256，768）
+        mixed_query_layer = self.query(hidden_states)#（24，256，768）
         mixed_key_layer = self.key(hidden_states)
         mixed_value_layer = self.value(hidden_states)
 
-        query_layer = self.transpose_for_scores(mixed_query_layer)
+        query_layer = self.transpose_for_scores(mixed_query_layer)#(24,12,256,64)
         key_layer = self.transpose_for_scores(mixed_key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
 
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))#(24,12,256,256)
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
         attention_probs = self.softmax(attention_scores)
         weights = attention_probs if self.vis else None
@@ -130,9 +130,9 @@ class Embeddings(nn.Module):
 
         if config.patches.get("grid") is not None:   # ResNet
             grid_size = config.patches["grid"]
-            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])
-            patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)
-            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1])  
+            patch_size = (img_size[0] // 16 // grid_size[0], img_size[1] // 16 // grid_size[1])#（1，1）
+            patch_size_real = (patch_size[0] * 16, patch_size[1] * 16)#（16，16）
+            n_patches = (img_size[0] // patch_size_real[0]) * (img_size[1] // patch_size_real[1]) #196
             self.hybrid = True
         else:
             patch_size = _pair(config.patches["size"])
@@ -140,27 +140,27 @@ class Embeddings(nn.Module):
             self.hybrid = False
 
         if self.hybrid:
-            self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor)
-            in_channels = self.hybrid_model.width * 16
+            self.hybrid_model = ResNetV2(block_units=config.resnet.num_layers, width_factor=config.resnet.width_factor)#（3，4，9）
+            in_channels = self.hybrid_model.width * 16     #1024
         self.patch_embeddings = Conv2d(in_channels=in_channels,
                                        out_channels=config.hidden_size,
                                        kernel_size=patch_size,
                                        stride=patch_size)
-        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))
+        self.position_embeddings = nn.Parameter(torch.zeros(1, n_patches, config.hidden_size))#（196，768）
 
         self.dropout = Dropout(config.transformer["dropout_rate"])
 
 
     def forward(self, x):
         if self.hybrid:
-            x, features = self.hybrid_model(x)
+            x, features = self.hybrid_model(x)#(24,1024,16,16), len(features)=3,
         else:
             features = None
-        x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2))
-        x = x.flatten(2)
-        x = x.transpose(-1, -2)  # (B, n_patches, hidden)
+        x = self.patch_embeddings(x)  # (B, hidden. n_patches^(1/2), n_patches^(1/2)),    (24,768,16,16)
+        x = x.flatten(2)#(24,768,256)
+        x = x.transpose(-1, -2)  # (B, n_patches, hidden)  (24,256,768)
 
-        embeddings = x + self.position_embeddings
+        embeddings = x + self.position_embeddings #(24,256,768)
         embeddings = self.dropout(embeddings)
         return embeddings, features
 
@@ -176,7 +176,7 @@ class Block(nn.Module):
 
     def forward(self, x):
         h = x
-        x = self.attention_norm(x)
+        x = self.attention_norm(x)#（24.256，768）
         x, weights = self.attn(x)
         x = x + h
 
@@ -229,12 +229,12 @@ class Encoder(nn.Module):
         super(Encoder, self).__init__()
         self.vis = vis
         self.layer = nn.ModuleList()
-        self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)
+        self.encoder_norm = LayerNorm(config.hidden_size, eps=1e-6)#在每一层对单个样本的所有神经元节点进行归一化，BN是在每个神经元对一个mini-batch大小的样本进行归一化
         for _ in range(config.transformer["num_layers"]):
             layer = Block(config, vis)
             self.layer.append(copy.deepcopy(layer))
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states):#（24，256，768）
         attn_weights = []
         for layer_block in self.layer:
             hidden_states, weights = layer_block(hidden_states)
@@ -251,7 +251,7 @@ class Transformer(nn.Module):
         self.encoder = Encoder(config, vis)
 
     def forward(self, input_ids):
-        embedding_output, features = self.embeddings(input_ids)
+        embedding_output, features = self.embeddings(input_ids)#(24,256,768)
         encoded, attn_weights = self.encoder(embedding_output)  # (B, n_patch, hidden)
         return encoded, attn_weights, features
 
@@ -335,12 +335,12 @@ class DecoderCup(nn.Module):
             padding=1,
             use_batchnorm=True,
         )
-        decoder_channels = config.decoder_channels
-        in_channels = [head_channels] + list(decoder_channels[:-1])
-        out_channels = decoder_channels
+        decoder_channels = config.decoder_channels#(256, 128, 64, 16)
+        in_channels = [head_channels] + list(decoder_channels[:-1])#[512, 256, 128, 64]
+        out_channels = decoder_channels#(256, 128, 64, 16)
 
         if self.config.n_skip != 0:
-            skip_channels = self.config.skip_channels
+            skip_channels = self.config.skip_channels#[512, 256, 64, 16]
             for i in range(4-self.config.n_skip):  # re-select the skip channels according to n_skip
                 skip_channels[3-i]=0
 
@@ -352,19 +352,19 @@ class DecoderCup(nn.Module):
         ]
         self.blocks = nn.ModuleList(blocks)
 
-    def forward(self, hidden_states, features=None):
+    def forward(self, hidden_states, features=None):#(1,256,768)
         B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
-        h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
-        x = hidden_states.permute(0, 2, 1)
-        x = x.contiguous().view(B, hidden, h, w)
-        x = self.conv_more(x)
+        h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))#(16,16)
+        x = hidden_states.permute(0, 2, 1)#(1,768,256)
+        x = x.contiguous().view(B, hidden, h, w)#(1,768,16,16)
+        x = self.conv_more(x)#(1,512,16,16)
         for i, decoder_block in enumerate(self.blocks):
             if features is not None:
                 skip = features[i] if (i < self.config.n_skip) else None
             else:
                 skip = None
             x = decoder_block(x, skip=skip)
-        return x
+        return x#(B,16,256,256)
 
 
 class VisionTransformer(nn.Module):
@@ -383,11 +383,11 @@ class VisionTransformer(nn.Module):
         self.config = config
 
     def forward(self, x):
-        if x.size()[1] == 1:
+        if x.size()[1] == 1:#(24,1,256,256)
             x = x.repeat(1,3,1,1)
         x, attn_weights, features = self.transformer(x)  # (B, n_patch, hidden)
-        x = self.decoder(x, features)
-        logits = self.segmentation_head(x)
+        x = self.decoder(x, features)#(B,16,256,256)
+        logits = self.segmentation_head(x)#(B,3,256,256)
         return logits
 
     def load_from(self, weights):

@@ -141,20 +141,20 @@ class ResNetV2(nn.Module):
 
     def forward(self, x):
         features = []
-        b, c, in_size, _ = x.size()
-        x = self.root(x)
+        b, c, in_size, _ = x.size()#24,3,256,256
+        x = self.root(x)#24,64,128,128
         features.append(x)
-        x = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)
+        x = nn.MaxPool2d(kernel_size=3, stride=2, padding=0)(x)#24,64,63,63
         for i in range(len(self.body)-1):
-            x = self.body[i](x)
-            right_size = int(in_size / 4 / (i+1))
+            x = self.body[i](x)#24,256,63,63
+            right_size = int(in_size / 4 / (i+1))#64
             if x.size()[2] != right_size:
-                pad = right_size - x.size()[2]
+                pad = right_size - x.size()[2]#1
                 assert pad < 3 and pad > 0, "x {} should {}".format(x.size(), right_size)
-                feat = torch.zeros((b, x.size()[1], right_size, right_size), device=x.device)
+                feat = torch.zeros((b, x.size()[1], right_size, right_size), device=x.device)#24,256,64,64
                 feat[:, :, 0:x.size()[2], 0:x.size()[3]] = x[:]
             else:
                 feat = x
             features.append(feat)
-        x = self.body[-1](x)
+        x = self.body[-1](x)#24,1024,16,16
         return x, features[::-1]
