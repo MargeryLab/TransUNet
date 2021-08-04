@@ -10,8 +10,23 @@ from scipy.ndimage.interpolation import zoom
 from torch.utils.data import Dataset
 import SimpleITK as sitk
 
-pixel_mean = 555.1642366555928
-pixel_std = 263.9476206601032
+
+def compute_mean_std():
+    data_train_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_train'
+    m_list, s_list = [], []
+
+    for img in os.listdir(data_train_root):
+        img_arr = cv2.imread(os.path.join(data_train_root, img))
+        m, s = cv2.meanStdDev(img_arr)
+        m_list.append(m.reshape((3,)))
+        s_list.append(s.reshape((3,)))
+    m_arr = np.array(m_list)
+    s_arr = np.array(s_list)
+    m = m_arr.mean(axis=0, keepdims=True)
+    s = s_arr.mean(axis=0, keepdims=True)
+    return m[0][::-1], s[0][::-1]
+
+pixel_mean, pixel_std = [180.5142679 , 150.84969904, 139.45428343],[23.89445224, 28.3921791 , 32.05544164]
 
 
 def random_rot_flip(image, label):
@@ -72,7 +87,7 @@ class Synapse_dataset(Dataset):
             vol_name = self.sample_list[idx].strip('\n')
             filepath = self.data_dir + "/{}.npy.h5".format(vol_name)
             data = h5py.File(filepath)
-            image, label = data['image'][:], data['label'][:].astype(np.int16)
+            image, label = data['image'][:], data['label'][:]
 
         sample = {'image': image, 'label': label}
         if self.transform:
@@ -150,5 +165,43 @@ def save_npy():
         file.writelines([line + '\n' for line in test_slice_ls])
 
 
+def png_save_npy():
+    data_train_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_train'
+    data_test_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_val'
+    train_label_path = '/home/dell/WinDisk/Datasets/ISIC-2017_Training_Part1_GroundTruth'
+    test_label_path = '/home/dell/WinDisk/Datasets/ISIC-2017_Test_v2_Part1_GroundTruth'
+    des_train_path = 'data/Synapse/train_npz'
+    des_test_path = 'data/Synapse/test_npz'
+
+    trainID_list, testID_list = [], []
+
+    for img in os.listdir(data_test_root):
+        testID_list.append(img[:-4])
+        img_arr = cv2.imread(os.path.join(data_test_root, img))
+        img_arr = (img_arr - pixel_mean) / pixel_std
+        label_arr = cv2.imread(os.path.join(test_label_path, img[:-4]+'_segmentation.png'))/255
+
+        h5f = h5py.File(os.path.join(des_test_path, img[:-4] + '.npy.h5'), 'w')
+        h5f.create_dataset('image', data=img_arr)
+        h5f.create_dataset('label', data=label_arr)
+        h5f.close()
+
+    for img in os.listdir(data_train_root):
+        trainID_list.append(img[:-4])
+        img_arr = cv2.imread(os.path.join(data_train_root, img))
+        img_arr = (img_arr - pixel_mean) / pixel_std
+        label_arr = cv2.imread(os.path.join(train_label_path, img[:-4]+'_segmentation.png'))/255
+
+        np.savez(os.path.join(des_train_path, img[:-4]+'.npz'), image=img_arr, label=label_arr)
+
+    with open('data/Synapse/train.txt', mode='w+') as file:
+        file.writelines([line+'\n' for line in trainID_list])
+
+    with open('data/Synapse/test_vol.txt', mode='w+') as file:
+        file.writelines([line + '\n' for line in testID_list])
+
+
 if __name__ == '__main__':
-    save_npy()
+    # print(compute_mean_std())
+    # save_npy()#for dcm
+    png_save_npy() #for png data
