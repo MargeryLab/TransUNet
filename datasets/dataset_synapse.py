@@ -1,5 +1,7 @@
 import os
 import random
+
+import cv2
 import h5py
 import numpy as np
 import torch
@@ -7,6 +9,9 @@ from scipy import ndimage
 from scipy.ndimage.interpolation import zoom
 from torch.utils.data import Dataset
 import SimpleITK as sitk
+
+pixel_mean = 555.1642366555928
+pixel_std = 263.9476206601032
 
 
 def random_rot_flip(image, label):
@@ -102,15 +107,26 @@ def save_npy():
         label_arr[label_arr == 4] = 1  # 黄色交界处定义为肿瘤
         label_arr[label_arr > 2] = 0 #包含012
 
+        # for i in range(imgs_arr.shape[0]):
+        #     m, s = cv2.meanStdDev(imgs_arr[i])
+        #     m_list.append(m)
+        #     s_list.append(s)
+        # m = np.mean(m_list)
+        # s = np.mean(s_list)
+        # print(m)
+        # print(s)
+        #
+        # m = np.mean(m_list)
+        # s = np.mean(s_list)
+
         if ID[:-7]+'\n' in train_ls:
-            pass
-            # for i in range(1, label_arr.shape[0]+1):
-            #     if i < 10:
-            #         np.savez(os.path.join(train_npy_path, ID[:-7] +'-0{}'.format(i)+'.npz'), image=imgs_arr[i-1], label=label_arr[i-1])  #按病例保存npy
-            #         train_slice_ls.append(ID[:-7] +'-0{}'.format(i))
-            #     else:
-            #         np.savez(os.path.join(train_npy_path, ID[:-7] + '-{}'.format(i) + '.npz'), image=imgs_arr[i-1], label=label_arr[i-1])
-            #         train_slice_ls.append(ID[:-7] + '-{}'.format(i))
+            for i in range(1, label_arr.shape[0]+1):
+                if i < 10:
+                    np.savez(os.path.join(train_npy_path, ID[:-7] +'-0{}'.format(i)+'.npz'), image=imgs_arr[i-1], label=label_arr[i-1])  #按病例保存npy
+                    train_slice_ls.append(ID[:-7] +'-0{}'.format(i))
+                else:
+                    np.savez(os.path.join(train_npy_path, ID[:-7] + '-{}'.format(i) + '.npz'), image=imgs_arr[i-1], label=label_arr[i-1])
+                    train_slice_ls.append(ID[:-7] + '-{}'.format(i))
         else:
             test_slice_ls.append(ID[:-7])
             h5f = h5py.File(os.path.join(test_npy_path, ID[:-7]+'.npy.h5'), 'w')
@@ -127,23 +143,12 @@ def save_npy():
             #                  label=label_arr[i - 1])
             #         test_slice_ls.append(ID[:-7] + '-{}'.format(i))
 
-    # with open('data/Synapse/train.txt', mode='w+') as file:
-    #     file.writelines([line+'\n' for line in train_slice_ls])
+    with open('data/Synapse/train.txt', mode='w+') as file:
+        file.writelines([line+'\n' for line in train_slice_ls])
 
     with open('data/Synapse/test_vol.txt', mode='w+') as file:
         file.writelines([line + '\n' for line in test_slice_ls])
 
 
 if __name__ == '__main__':
-    # for i in range(imgs_arr.shape[0]):
-    #     m,s = cv2.meanStdDev(imgs_arr[i])
-    #     m_list.append(m)
-    #     s_list.append(s)
-    # m = np.mean(m_list)
-    # s = np.mean(s_list)
-    # print(m)
-    # print(s)
-
-    # m = np.mean(m_list)
-    # s = np.mean(s_list)
     save_npy()
