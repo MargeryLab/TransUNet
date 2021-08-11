@@ -17,11 +17,11 @@ parser.add_argument('--dataset', type=str,
 parser.add_argument('--list_dir', type=str,
                     default='list_dir', help='list dir')
 parser.add_argument('--num_classes', type=int,
-                    default=3, help='output channel of network')
+                    default=2, help='output channel of network')
 parser.add_argument('--max_iterations', type=int,
                     default=60000, help='maximum epoch number to train')
 parser.add_argument('--max_epochs', type=int,
-                    default=150, help='maximum epoch number to train')
+                    default=300, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int,
                     default=24, help='batch_size per gpu')
 parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
@@ -87,11 +87,15 @@ if __name__ == "__main__":
     if args.vit_name.find('R50') != -1:
         config_vit.patches.grid = (int(args.img_size / args.vit_patches_size), int(args.img_size / args.vit_patches_size))#（14，14）
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes).cuda()
-    # from Code.utils.utils import CalParams
-    #
-    # x = torch.randn(1, 3, args.img_size,
-    #                 args.img_size).cuda()  # 返回一个张量，包含了从标准正态分布（均值为0，方差为1，即高斯白噪声）中抽取的一组随机数。torch.randn(*sizes, out=None) → Tensor,张量的形状由参数sizes定义。
-    # CalParams(net, x)
+
+    # import torch
+    # from ptflops import get_model_complexity_info
+    # with torch.cuda.device(0):
+    #     macs, params = get_model_complexity_info(net, (1, 256, 256), as_strings=True,
+    #                                              print_per_layer_stat=True, verbose=True)
+    #     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    #     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
     net.load_from(weights=np.load(config_vit.pretrained_path))
     # net.load_state_dict(torch.load('best_model.pth'))
 

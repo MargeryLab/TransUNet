@@ -6,11 +6,11 @@ import sys
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import torch.nn as nn
+import scikits.bootstrap as boot
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from datasets.dataset_synapse import Synapse_dataset
-from utils import test_single_volume
+from utils import test_single_volume, test_singleClass_png
 from networks.vit_seg_modeling import VisionTransformer as ViT_seg
 from networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
 
@@ -20,7 +20,7 @@ parser.add_argument('--volume_path', type=str,
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
 parser.add_argument('--num_classes', type=int,
-                    default=3, help='output channel of network')
+                    default=2, help='output channel of network')
 parser.add_argument('--list_dir', type=str,
                     default='data/Synapse', help='list dir')
 
@@ -47,20 +47,38 @@ def inference(args, model, test_save_path=None):
     testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
     logging.info("{} test iterations per epoch".format(len(testloader)))
     model.eval()
-    metric_list = 0.0
+    metric_list, sens_list, speci_list = [], [], []
     for i_batch, sampled_batch in tqdm(enumerate(testloader)):
         h, w = sampled_batch["image"].size()[2:]
         image, label, case_name = sampled_batch["image"], sampled_batch["label"], sampled_batch['case_name'][0]
-        metric_i = test_single_volume(image, label, model, classes=args.num_classes, patch_size=[args.img_size, args.img_size],
+        metric_i, sens_i, speci_i = test_single_volume(image, label, model, classes=args.num_classes, patch_size=[args.img_size, args.img_size],
                                       test_save_path=test_save_path, case=case_name, z_spacing=args.z_spacing)
-        metric_list += np.array(metric_i)
+        metric_list.append(np.array(metric_i[0][0]))
+        sens_list.append(np.array(sens_i))
+        speci_list.append(np.array(speci_i))
+        # metric_list += np.array(metric_i)
+        # sens_list += np.array(sens_i)
+        # speci_list += np.array(speci_i)
         logging.info('idx %d case %s mean_dice %f mean_hd95 %f' % (i_batch, case_name, np.mean(metric_i, axis=0)[0], np.mean(metric_i, axis=0)[1]))
-    metric_list = metric_list / len(db_test)
-    for i in range(1, args.num_classes):
-        logging.info('Mean class %d mean_dice %f mean_hd95 %f' % (i, metric_list[i-1][0], metric_list[i-1][1]))
-    performance = np.mean(metric_list, axis=0)[0]
-    mean_hd95 = np.mean(metric_list, axis=0)[1]
-    logging.info('Testing performance in best val model: mean_dice : %f mean_hd95 : %f' % (performance, mean_hd95))
+    # metric_list = metric_list / len(db_test)
+    # sens_list = sens_list / len(db_test)
+    # speci_list = speci_list / len(db_test)
+    inter_confi_tumor = boot.ci(np.array(metric_list), np.average)
+    inter_confi_sensi = boot.ci(np.array(sens_list), np.average)
+    inter_confi_speci = boot.ci(np.array(speci_list), np.average)
+    # for i in range(1, args.num_classes):
+    #     logging.info('Mean class %d mean_dice %f mean_hd95 %f mean_sensitivity %f mean_specificity %f' %
+    #                  (i, metric_list[i-1][0], metric_list[i-1][1], sens_list[i-1], speci_list[i-1]))
+    dice = np.mean(metric_list, axis=0)
+    # mean_hd95 = np.mean(metric_list, axis=0)[1]
+    sens = np.mean(sens_list)
+    speci = np.mean(speci_list)
+
+    logging.info('Testing performance in best val model: mean_dice : {} confidence_interval={}'
+                 .format (dice, inter_confi_tumor))
+    logging.info('Testing performance in best val model: sensitivity: {} confidence_interval={}, specificity: {} confidence_interval={}'
+                 .format(sens, inter_confi_sensi, speci, inter_confi_speci))
+
     return "Testing Finished!"
 
 
@@ -118,13 +136,8 @@ if __name__ == "__main__":
     net = ViT_seg(config_vit, img_size=args.img_size, num_classes=config_vit.n_classes).cuda()
 
     # snapshot = os.path.join(snapshot_path, 'best_model.pth')
-    snapshot = 'model/TU_Synapse256/TU_pretrain_R50-ViT-B_16_skip3_60k_epo150_bs24_256/epoch_99.pth'
-    # if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-50-1))
-    from Code.utils.utils import CalParams
-
-    x = torch.randn(1, 3, args.img_size,
-                    args.img_size).cuda()  # 返回一个张量，包含了从标准正态分布（均值为0，方差为1，即高斯白噪声）中抽取的一组随机数。torch.randn(*sizes, out=None) → Tensor,张量的形状由参数sizes定义。
-    CalParams(net, x)
+    snapshot = '/home/dell/WinDisk/TransUNet/model/TU_Synapse256_rectal0.656/TU_pretrain_R50-ViT-B_16_skip3_60k_epo300_bs24_256/epoch_199.pth'
+    if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-50-1))
     net.load_state_dict(torch.load(snapshot))
     snapshot_name = snapshot_path.split('/')[-1]
 

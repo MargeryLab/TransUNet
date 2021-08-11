@@ -1,3 +1,5 @@
+import os
+
 import cv2
 import numpy as np
 import torch
@@ -58,6 +60,28 @@ def calculate_metric_percase(pred, gt):
     else:
         return 0, 0
 
+def sensitivity(pred_flat, gt_flat):
+    """TP / (TP + FN)  真阳/（真阳+假阴）"""
+    pred_flat = pred_flat.ravel()
+    gt_flat = gt_flat.ravel()
+    tp = np.sum((pred_flat != 0) * (gt_flat != 0))
+    fn = np.sum((pred_flat == 0) * (gt_flat != 0))
+
+    score = tp.astype(np.float32) / (tp + fn).astype(np.float)
+
+    return score.mean()
+
+
+def specificity(pred_flat, gt_flat):
+    """TN / (TN + FP) 真阴/（真阴+假阳）"""
+    pred_flat = pred_flat.ravel()
+    gt_flat = gt_flat.ravel()
+    fp = np.sum((pred_flat != 0) * (gt_flat == 0))
+    tn = np.sum((pred_flat == 0) * (gt_flat == 0))
+
+    score = tn.astype(np.float32) / (fp + tn).astype(np.float32)
+
+    return score.mean()
 
 def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1):
     image, label = image.squeeze(0).cpu().detach().numpy(), label.squeeze(0).cpu().detach().numpy()
@@ -86,9 +110,11 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
         with torch.no_grad():
             out = torch.argmax(torch.softmax(net(input), dim=1), dim=1).squeeze(0)
             prediction = out.cpu().detach().numpy()
-    metric_list = []
+    metric_list, sens_list, speci_list = [], [], []
     for i in range(1, classes):
         metric_list.append(calculate_metric_percase(prediction == i, label == i))
+        sens_list.append(sensitivity(prediction == i, label == i))
+        speci_list.append(specificity(prediction == i, label == i))
 
     if test_save_path is not None:
         img_itk = sitk.GetImageFromArray(image.astype(np.float32))
@@ -100,7 +126,28 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
         sitk.WriteImage(prd_itk, test_save_path + '/'+case + "_pred.nii.gz")
         sitk.WriteImage(img_itk, test_save_path + '/'+ case + "_img.nii.gz")
         sitk.WriteImage(lab_itk, test_save_path + '/'+ case + "_gt.nii.gz")
-    return metric_list
+    return metric_list, sens_list, speci_list
+
+
+def test_singleClass_png(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1):
+    image, label = image.cpu().detach().numpy(), label.cpu().detach().numpy()
+    x, y = label.shape[1], label.shape[2]
+    input = cv2.resize(image[0], dsize=(patch_size[0],patch_size[1]))
+    input = torch.from_numpy(input).unsqueeze(0).permute(0, 3, 1, 2).cuda().type(torch.float32)
+    net.eval()
+    with torch.no_grad():
+        out = torch.argmax(torch.softmax(net(input), dim=1), dim=1).squeeze(0)#torch.argmax(dim)会返回dim维度上张量最大值的索引。
+        prediction = out.cpu().detach().numpy()
+        prediction = zoom(prediction, (x / patch_size[0], y /patch_size[1]), order=0)
+    metric_list, sens_list, speci_list = [], [], []
+    for i in range(1, classes):
+        metric_list.append(calculate_metric_percase(prediction[None] == i, label == i))
+        sens_list.append(sensitivity(prediction[None] == i, label == i))
+        speci_list.append(specificity(prediction[None] == i, label == i))
+
+    if test_save_path is not None:
+        cv2.imwrite(os.path.join(test_save_path,case+'.png'), prediction*255)
+    return metric_list, sens_list, speci_list
 
 
 def test_single_png(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1):

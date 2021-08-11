@@ -12,7 +12,7 @@ import SimpleITK as sitk
 
 
 def compute_mean_std():
-    data_train_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_train'
+    data_train_root = '/media/margery/4ABB9B07DF30B9DB/MedicalImagingDataset/Kvasir-SEG/images'
     m_list, s_list = [], []
 
     for img in os.listdir(data_train_root):
@@ -26,7 +26,7 @@ def compute_mean_std():
     s = s_arr.mean(axis=0, keepdims=True)
     return m[0][::-1], s[0][::-1]
 
-pixel_mean, pixel_std = [180.5142679 , 150.84969904, 139.45428343],[23.89445224, 28.3921791 , 32.05544164]
+pixel_mean, pixel_std = [180.5142679 , 150.84969904, 139.45428343],[23.89445224, 28.3921791 , 32.05544164]#isic
 
 
 def random_rot_flip(image, label):
@@ -87,7 +87,7 @@ class Synapse_dataset(Dataset):
             vol_name = self.sample_list[idx].strip('\n')
             filepath = self.data_dir + "/{}.npy.h5".format(vol_name)
             data = h5py.File(filepath)
-            image, label = data['image'][:], data['label'][:]
+            image, label = data['image'][:], data['label'][:].astype(np.int16)
 
         sample = {'image': image, 'label': label}
         if self.transform:
@@ -166,33 +166,33 @@ def save_npy():
 
 
 def png_save_npy():
-    data_train_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_train'
-    data_test_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_val'
-    train_label_path = '/home/dell/WinDisk/Datasets/ISIC-2017_Training_Part1_GroundTruth'
-    test_label_path = '/home/dell/WinDisk/Datasets/ISIC-2017_Test_v2_Part1_GroundTruth'
+    root = '/media/margery/4ABB9B07DF30B9DB/MedicalImagingDataset/Kvasir-SEG'
+    data_train_root = '/media/margery/4ABB9B07DF30B9DB/MedicalImagingDataset/Kvasir-SEG/images'
+    # data_test_root = '/home/dell/WinDisk2/DLDemo/MSBC-Net-Simple-Class/datasets/rectalTumor/rectal_tumor_val'
+    train_label_path = '/media/margery/4ABB9B07DF30B9DB/MedicalImagingDataset/Kvasir-SEG/masks_raw'
+    # test_label_path = '/home/dell/WinDisk/Datasets/ISIC-2017_Test_v2_Part1_GroundTruth'
     des_train_path = 'data/Synapse/train_npz'
     des_test_path = 'data/Synapse/test_npz'
 
     trainID_list, testID_list = [], []
 
-    for img in os.listdir(data_test_root):
-        testID_list.append(img[:-4])
-        img_arr = cv2.imread(os.path.join(data_test_root, img))
-        img_arr = (img_arr - pixel_mean) / pixel_std
-        label_arr = cv2.imread(os.path.join(test_label_path, img[:-4]+'_segmentation.png'))/255
-
-        h5f = h5py.File(os.path.join(des_test_path, img[:-4] + '.npy.h5'), 'w')
-        h5f.create_dataset('image', data=img_arr)
-        h5f.create_dataset('label', data=label_arr)
-        h5f.close()
-
+    train_ls = open(os.path.join(root, 'train.txt')).readlines()
     for img in os.listdir(data_train_root):
         trainID_list.append(img[:-4])
         img_arr = cv2.imread(os.path.join(data_train_root, img))
         img_arr = (img_arr - pixel_mean) / pixel_std
-        label_arr = cv2.imread(os.path.join(train_label_path, img[:-4]+'_segmentation.png'))/255
+        label_arr = cv2.imread(os.path.join(train_label_path, img)) / 255
 
-        np.savez(os.path.join(des_train_path, img[:-4]+'.npz'), image=img_arr, label=label_arr)
+        if os.path.join(data_train_root, img+'\n') in train_ls:
+            pass
+            # np.savez(os.path.join(des_train_path, img[:-4]+'.npz'), image=img_arr, label=label_arr)
+        else:
+            testID_list.append(img[:-4])
+
+            h5f = h5py.File(os.path.join(des_test_path, img[:-4] + '.npy.h5'), 'w')
+            h5f.create_dataset('image', data=img_arr)
+            h5f.create_dataset('label', data=label_arr)
+            h5f.close()
 
     with open('data/Synapse/train.txt', mode='w+') as file:
         file.writelines([line+'\n' for line in trainID_list])
@@ -202,6 +202,6 @@ def png_save_npy():
 
 
 if __name__ == '__main__':
-    # print(compute_mean_std())
+    print(compute_mean_std())
     # save_npy()#for dcm
     png_save_npy() #for png data
